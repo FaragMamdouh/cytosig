@@ -13,6 +13,12 @@ write10xCounts(
 
 setwd("/Volumes/BCP-ALL/Normal Dataset/thymus/our dataset/Thymus/THY1/Gene_expression/filtered_feature_bc_matrix/cytosig")
 
+python3 /Users/xmamfa/CytoSig/CytoSig/CytoSig_run.py \
+-i "/Volumes/BCP-ALL/Normal Dataset/thymus/our dataset/Thymus/Thymus integrated/cytosig" \
+-o "/Volumes/BCP-ALL/Normal Dataset/thymus/our dataset/Thymus/Thymus integrated/cytosig" \
+-c 0 -z 1
+
+
 
 # 5. load CytoSig output
 zscore_all <- data.table::fread("output.Zscore")
