@@ -1,112 +1,44 @@
-counts <- GetAssayData(
-  Thymus1,
-  assay = "RNA",
-  layer = "counts"
-)
-write10xCounts(
-  x = counts,
-  path = "/Volumes/BCP-ALL/Normal Dataset/thymus/our dataset/Thymus/THY1/Gene_expression/filtered_feature_bc_matrix/cytosig",
-  version = "3",
-  gene.id = rownames(counts),
-  gene.symbol = rownames(counts)
-)
-
-setwd("/Volumes/BCP-ALL/Normal Dataset/thymus/our dataset/Thymus/THY1/Gene_expression/filtered_feature_bc_matrix/cytosig")
-
-python3 /Users/xmamfa/CytoSig/CytoSig/CytoSig_run.py \
--i "/Volumes/BCP-ALL/Normal Dataset/thymus/our dataset/Thymus/Thymus integrated/cytosig" \
--o "/Volumes/BCP-ALL/Normal Dataset/thymus/our dataset/Thymus/Thymus integrated/cytosig" \
--c 0 -z 1
-
-
-
-# 5. load CytoSig output
-zscore_all <- data.table::fread("output.Zscore")
-zscore_all <- zscore_all %>%
-  column_to_rownames("V1") %>%
-  t()%>%
-  as.matrix()
-
-
-zscore_all <- zscore_all[colnames(Thymus1), ]
-Thymus1[["CytoSig"]] <- CreateAssayObject(data = t(zscore_all))
-DefaultAssay(Thymus1) = "CytoSig"
-FeaturePlot(Thymus1,features = "IL12", label = TRUE)
-dot(Thymus1,rownames(Thymus1@assays[["CytoSig"]]@data))
-
-
-
-library(dplyr)
-
-cytokine <- rownames(Thymus1@assays[["CytoSig"]]@data)
-
-
-# Make sure rownames are cell barcodes
-zscore_all <- zscore_all[colnames(Thymus1), ]
-
-plot_df <- as.data.frame(zscore_all) %>%
-  rownames_to_column("cell") %>%
-  mutate(group = Thymus1@active.ident[match(cell, colnames(Thymus1))]) %>%
-  pivot_longer(
-    cols = -c(cell, group),
-    names_to = "cytokine",
-    values_to = "score"
-  )
-
-
-mean_activity <- plot_df %>%
-  group_by(group, cytokine) %>%
-  summarise(mean_score = mean(score), .groups = "drop")
-
-#-----------------------------------------------------------------------#
-
 library(pheatmap)
-
-heatmap_mat <- mean_activity %>%
-  pivot_wider(names_from = cytokine, values_from = mean_score) %>%
-  column_to_rownames("group") %>%
-  as.matrix()
 library(RColorBrewer)
+filltered2 <- SecAct.activity.inference.scRNAseq(filltered2,sigMatrix ="CytoSig" , cellType_meta="integrated_snn_res.0.5")
+act <- filltered2 @misc $SecAct_output $SecretedProteinActivity$zscore
 
-max_abs <- max(abs(heatmap_mat), na.rm = TRUE)
+# Convert to matrix and transpose
+mat <- t(as.matrix(act))
 
+# ── Bold labels ───────────────────────────────────────────────────────────────
+bold_rows <- parse(text = paste0("bold('", rownames(mat), "')"))
+bold_cols <- parse(text = paste0("bold('", colnames(mat), "')"))
 
-breaks <- seq(-max_abs, max_abs, length.out = 100)
+# Custom color palette
+color_palette <- colorRampPalette(c("#2166AC", "#4393C3", "#92C5DE", 
+                                    "#F7F7F7", 
+                                    "#F4A582", "#D6604D", "#B2182B"))(100)
 
-colors <- colorRampPalette(c("#2C7BB6", "white", "#D7191C"))(99)
-heatmap_mat <- heatmap_mat[order(rownames(heatmap_mat)), ]
-library(pheatmap)
+max_val <- max(abs(mat), na.rm = TRUE)
+breaks  <- seq(-max_val, max_val, length.out = 101)
 
-
-pheatmap(
-  heatmap_mat,
-  color = colors,
-  breaks = breaks,
-  scale = "row",
-  cluster_rows = FALSE,
-  cluster_cols = TRUE,
-  border_color = NA,
-  fontsize_row = 10,
-  fontsize_col = 8,
-  angle_col = 90,
-  treeheight_row = 40,
-  treeheight_col = 40,
-  cellwidth = 12,
-  cellheight = 12,
-  main = "Cytokine Signaling Activity (CytoSig)",
-  # Make rownames bold
-  labels_row = rownames(heatmap_mat),
-  gpar = gpar(fontface = "bold")  # this will make rownames bold
+pheatmap(mat,
+         scale                    = "none",
+         clustering_distance_rows = "euclidean",
+         clustering_distance_cols = "euclidean",
+         clustering_method        = "ward.D2",
+         color  = color_palette,
+         breaks = breaks,
+         border_color = NA,
+         treeheight_row = 40,
+         treeheight_col = 40,
+         labels_row    = bold_rows,
+         labels_col    = bold_cols,
+         fontsize_row  = 8,
+         fontsize_col  = 9,
+         fontsize      = 10,
+         legend           = TRUE,
+         legend_breaks    = c(-max_val, -max_val/2, 0, max_val/2, max_val),
+         legend_labels    = round(c(-max_val, -max_val/2, 0, max_val/2, max_val), 1),
+         cutree_rows = 3,
+         cutree_cols = 2,
+         cellwidth  = 14,
+         cellheight = 10,
+         main = "Activity Heatmap (Z-scores)"
 )
-#-----------------------------------------------------------------------#
-top_cytokines <- mean_activity %>%
-  group_by(group) %>%
-  slice_max(order_by = mean_score, n = 10)
-
-ggplot(top_cytokines, aes(x = reorder(cytokine, mean_score), y = mean_score)) +
-  geom_col(fill = "#6F99AD") +
-  facet_wrap(~group, scales = "free") +
-  coord_flip() +
-  theme_classic()
-#-----------------------------------------------------------------------#
-
